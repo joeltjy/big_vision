@@ -1,44 +1,24 @@
-# Copyright 2024 Big Vision Authors.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# pylint: disable=line-too-long
-r"""Train VAE on NYU depth data for GIVT-based UViM.
+r"""Train VAE on cell dataset.
 """
 
 import big_vision.configs.common as bvcc
 import ml_collections as mlc
 
-
-QUANTIZATION_BINS = 256
-MIN_DEPTH = 0.001
-MAX_DEPTH = 10.0
-
-
-def get_config(arg='res=512,patch_size=16'):
-  """Config for training label compression on NYU depth."""
-  arg = bvcc.parse_arg(arg, res=512, patch_size=16,
-                       runlocal=False, singlehost=False)
+def get_config():
+  """Config for training VAE on cell dataset."""
+  arg = bvcc.parse_arg(arg, runlocal=False, singlehost=False)
   config = mlc.ConfigDict()
 
   config.input = {}
-  config.input.data = dict(name='nyu_depth_v2', split='train')
 
-  config.input.batch_size = 16 # changed
-  config.input.shuffle_buffer_size = 25_000
+  config.input.data = dict(name='cell', split='train')
+
+  config.input.batch_size = 16
+  config.input.shuffle_buffer_size = 1000
 
   config.total_epochs = 200
 
+  # TODO: add pp for cell dataset
   config.input.pp = (
       f'decode|nyu_depth|'
       f'randu("fliplr")|det_fliplr(key="image")|det_fliplr(key="labels")|'

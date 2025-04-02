@@ -28,6 +28,7 @@ import einops
 import jax
 import numpy as np
 import tensorflow as tf
+from big_vision.datasets.cell.cell_dataset import CellDataSource
 
 
 DEFAULT_NUM_PARALLEL_CALLS = 100
@@ -99,78 +100,90 @@ def training(input_config):
     return {k: config[k] for k in per_pipeline_configs if k in config}
 
   batch_size = input_config.batch_size
-  # Handle separately the common case when no mixing happens.
-  if isinstance(input_config.data.get("name"), str):
-    train_data = ds_core.get(**input_config.data)
+
+  # for training cell dataset
+  if input_config.data.get("name") == "cell":
+    data_source = CellDataSource(input_config.data.get("split"))
+    train_data = data_source.get_tfdata(ordered=False, **input_config.get("tfdata", {}))
     train_ds = make_for_train(
-        data=train_data.get_tfdata(ordered=False,
-                                   **input_config.get("tfdata", {})),
+        data=train_data,
         batch_size=batch_size,
         preprocess_fn=pp_builder.get_preprocess_fn(input_config.get("pp")),
         prefetch=input_config.get("prefetch", 2),  # Default 2 for bwd compat.
         **config_to_kw(input_config)
     )
-    return train_ds, train_data.total_examples
+    return train_ds, data_source.total_examples
+  # if isinstance(input_config.data.get("name"), str):
+  #   train_data = ds_core.get(**input_config.data)
+  #   train_ds = make_for_train(
+  #       data=train_data.get_tfdata(ordered=False,
+  #                                  **input_config.get("tfdata", {})),
+  #       batch_size=batch_size,
+  #       preprocess_fn=pp_builder.get_preprocess_fn(input_config.get("pp")),
+  #       prefetch=input_config.get("prefetch", 2),  # Default 2 for bwd compat.
+  #       **config_to_kw(input_config)
+  #   )
+  #   return train_ds, train_data.total_examples
 
-  # A helpful error instead of silent ignore:
-  for k in per_pipeline_configs:
-    assert k not in input_config, f"{k} is per-dataset in multi-input."
+  # # A helpful error instead of silent ignore:
+  # for k in per_pipeline_configs:
+  #   assert k not in input_config, f"{k} is per-dataset in multi-input."
 
-  # Parallelize the loading of datasets when doing data mixture.
-  # For larger mixes, we sometimes spend >5min when doing sequentially.
-  # NOTE: functools.cache is thread-safe.
-  def _make(name_and_weight):
-    name, weight = name_and_weight
-    dataset = input_config[name]
-    train_data = ds_core.get(**dataset.data)
-    dataset = make_for_train(
-        data=train_data.get_tfdata(ordered=False, **dataset.get("tfdata", {})),
-        # Don't batch the data just yet, it will be done after
-        # mixing the different datasets below.
-        batch_size=None,
-        preprocess_fn=pp_builder.get_preprocess_fn(dataset.get("pp"), name),
-        prefetch=0,  # Prefetching each pipeline leads to huge OOMs.
-        **config_to_kw(dataset)
-    )
-    if keys := input_config.get("keep_only"):
-      dataset = dataset.map(lambda d, keys=keys: {k: d[k] for k in keys})
-    return name, dataset, weight, train_data.total_examples
+  # # Parallelize the loading of datasets when doing data mixture.
+  # # For larger mixes, we sometimes spend >5min when doing sequentially.
+  # # NOTE: functools.cache is thread-safe.
+  # def _make(name_and_weight):
+  #   name, weight = name_and_weight
+  #   dataset = input_config[name]
+  #   train_data = ds_core.get(**dataset.data)
+  #   dataset = make_for_train(
+  #       data=train_data.get_tfdata(ordered=False, **dataset.get("tfdata", {})),
+  #       # Don't batch the data just yet, it will be done after
+  #       # mixing the different datasets below.
+  #       batch_size=None,
+  #       preprocess_fn=pp_builder.get_preprocess_fn(dataset.get("pp"), name),
+  #       prefetch=0,  # Prefetching each pipeline leads to huge OOMs.
+  #       **config_to_kw(dataset)
+  #   )
+  #   if keys := input_config.get("keep_only"):
+  #     dataset = dataset.map(lambda d, keys=keys: {k: d[k] for k in keys})
+  #   return name, dataset, weight, train_data.total_examples
 
-  names, datasets, weights, totals = [], [], [], []
-  pool = multiprocessing.pool.ThreadPool(
-      input_config.get("thread_pool_size", len(input_config.data))
-  )
-  for name, dataset, weight, total in pool.map(
-      # Skip weight=0 datasets as a convenient optimization in sweeps.
-      _make, ((name, w) for name, w in input_config.data.items() if w)):
-    names.append(name)
-    datasets.append(dataset)
-    weights.append(weight)
-    totals.append(total)
+  # names, datasets, weights, totals = [], [], [], []
+  # pool = multiprocessing.pool.ThreadPool(
+  #     input_config.get("thread_pool_size", len(input_config.data))
+  # )
+  # for name, dataset, weight, total in pool.map(
+  #     # Skip weight=0 datasets as a convenient optimization in sweeps.
+  #     _make, ((name, w) for name, w in input_config.data.items() if w)):
+  #   names.append(name)
+  #   datasets.append(dataset)
+  #   weights.append(weight)
+  #   totals.append(total)
 
-  # Normalize the weights such that they sum up to 1.
-  weights = [x / sum(weights) for x in weights]
+  # # Normalize the weights such that they sum up to 1.
+  # weights = [x / sum(weights) for x in weights]
 
-  logging.info(
-      "NOTE: Total dataset mix size: %d\nContributions:\n%s", sum(totals),
-      "\n".join(f"{ds}: {n} ({w * 100:.2g}%)"
-                for ds, n, w in zip(names, totals, weights))
-  )
+  # logging.info(
+  #     "NOTE: Total dataset mix size: %d\nContributions:\n%s", sum(totals),
+  #     "\n".join(f"{ds}: {n} ({w * 100:.2g}%)"
+  #               for ds, n, w in zip(names, totals, weights))
+  # )
 
-  train_ds = tf.data.Dataset.sample_from_datasets(
-      datasets, weights, stop_on_empty_dataset=True)
-  if input_config.get("pack"):
-    train_ds = sequence_packing.pack_dataset(
-        train_ds,
-        input_config["batch_size"] // jax.process_count(),
-        input_config.pack.to_dict())
+  # train_ds = tf.data.Dataset.sample_from_datasets(
+  #     datasets, weights, stop_on_empty_dataset=True)
+  # if input_config.get("pack"):
+  #   train_ds = sequence_packing.pack_dataset(
+  #       train_ds,
+  #       input_config["batch_size"] // jax.process_count(),
+  #       input_config.pack.to_dict())
 
-  train_ds = train_ds.batch(
-      input_config["batch_size"] // jax.process_count(), drop_remainder=True)
-  if (pf := input_config.get("prefetch", 2)):
-    train_ds = train_ds.prefetch(pf)
+  # train_ds = train_ds.batch(
+  #     input_config["batch_size"] // jax.process_count(), drop_remainder=True)
+  # if (pf := input_config.get("prefetch", 2)):
+  #   train_ds = train_ds.prefetch(pf)
 
-  return train_ds, sum(totals)
+  # return train_ds, sum(totals)
 
 
 # The pipeline below is used for evals in multi-{G,T}PU and multi-host settings.
