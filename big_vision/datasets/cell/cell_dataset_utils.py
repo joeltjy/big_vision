@@ -2,6 +2,7 @@ from datasets import load_from_disk
 import anndata as ad
 import numpy as np
 import tensorflow as tf
+import os
 from cell_config import N_TIMESTAMPS, N_FEATURES
 import tqdm
 
@@ -11,19 +12,20 @@ def load_cell_datasets(data_dir):
     Each data point is a 3-tuple where the first element is a list of IDs.
     The actual data is stored in another dataset where the IDs are the keys.
     """
-    try:
-        print("Loading dataset...")
-        dataset = tqdm.tqdm(load_from_disk(data_dir))
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Dataset {data_dir} not found")
+    # Convert to absolute path and verify it exists
+    data_dir = os.path.abspath(data_dir)
     
+    if not os.path.exists(data_dir):
+        raise FileNotFoundError(f"Dataset directory not found: {data_dir}")
+    
+    try:
+        # Load train and test datasets separately
+        train_dataset = load_from_disk(os.path.join(data_dir, 'train'))
+        test_dataset = load_from_disk(os.path.join(data_dir, 'test'))
+    except Exception as e:
+        raise RuntimeError(f"Failed to load dataset from {data_dir}: {str(e)}")
 
-    train_dataset = dataset['train']
-    eval_dataset = dataset['test']
-
-    print(f"Loaded {train_dataset.shape[0]} train and {eval_dataset.shape[0]} eval examples")
-
-    return train_dataset, eval_dataset
+    return train_dataset, test_dataset
 
 def load_lookup_dataset(lookup_dir):
     """
@@ -31,14 +33,20 @@ def load_lookup_dataset(lookup_dir):
     Each ID points to a 19089-length vector.
     """
     try:
-        print("Loading lookup dataset...")
-        adata = tqdm.tqdm(ad.read_h5ad(lookup_dir, backed='r'))
-    except FileNotFoundError:
+        # Convert to absolute path and verify it exists
+        lookup_dir = os.path.abspath(lookup_dir)
+        if not os.path.exists(lookup_dir):
+            raise FileNotFoundError(f"Lookup file not found: {lookup_dir}")
+            
+        adata = ad.read_h5ad(lookup_dir, backed='r')
+        # Convert to numpy array to avoid repeated indexing issues
+        lookup_data = adata.X[:]
+    except FileNotFoundError as e:
         raise FileNotFoundError(f"Dataset {lookup_dir} not found")
+    except Exception as e:
+        raise RuntimeError(f"Failed to load lookup dataset from {lookup_dir}: {str(e)}")
 
-    print(f"Loaded dataset of size {adata.shape}")
-
-    return adata
+    return lookup_data
 
 def cell_data_generator(dataset, lookup_dataset):
     """
@@ -49,14 +57,17 @@ def cell_data_generator(dataset, lookup_dataset):
     n_dataset_entries = dataset.shape[0] # 180000
 
     for idx in range(n_dataset_entries):
-        dataset_ids = dataset[idx] 
+        dataset_ids = dataset[idx]["input_ids"] 
         assert len(dataset_ids) == N_TIMESTAMPS
-        dataset_data = np.array([lookup_dataset[id] for id in dataset_ids]) # (N_TIMESTAMPS, N_FEATURES)
+        # Convert sparse matrices to dense arrays
+        dataset_data = np.array([lookup_dataset[id].toarray().flatten() for id in dataset_ids]) # (N_TIMESTAMPS, N_FEATURES)
+        if idx == 0:
+            print("dataset_data shape", dataset_data.shape)
         yield {"cell_data": dataset_data}
 
 def generate_output_signature():
     output_signature = {
-        "cell_data": tf.TensorSpec(shape=(N_FEATURES, N_TIMESTAMPS), dtype=tf.float32),
+        "cell_data": tf.TensorSpec(shape=(N_TIMESTAMPS, N_FEATURES), dtype=tf.float32),
     }
     return output_signature
 
