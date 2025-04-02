@@ -1,8 +1,10 @@
 r"""Train VAE on cell dataset.
+Uses ViT as encoder and transformer as decoder.
 """
 
 import big_vision.configs.common as bvcc
 import ml_collections as mlc
+from big_vision.datasets.cell.cell_config import N_TIMESTAMPS, N_FEATURES
 
 def get_config():
   """Config for training VAE on cell dataset."""
@@ -20,25 +22,13 @@ def get_config():
 
   # TODO: add pp for cell dataset
   config.input.pp = (
-      f'decode|nyu_depth|'
-      f'randu("fliplr")|det_fliplr(key="image")|det_fliplr(key="labels")|'
-      f'inception_box|crop_box(key="image")|crop_box(key="labels")|'
-      f'resize({arg.res})|resize({arg.res},key="labels",method="nearest")|'
-      f'bin_nyu_depth(min_depth={MIN_DEPTH}, max_depth={MAX_DEPTH}, num_bins={QUANTIZATION_BINS})|'
-      f'value_range(-1, 1)|copy("labels", "image")|keep("image")'
+      f'decode|keep("cell_data")'
   )
   pp_eval = (
-      f'decode|nyu_depth|nyu_eval_crop|'
-      f'resize({arg.res})|resize({arg.res},key="labels",method="nearest")|'
-      f'bin_nyu_depth(min_depth={MIN_DEPTH}, max_depth={MAX_DEPTH}, num_bins={QUANTIZATION_BINS})|'
-      f'value_range(-1, 1)|copy("labels", "image")|keep("image")'
+      f'decode|keep("cell_data")'
   )
   pp_pred = (
-      f'decode|nyu_depth|nyu_eval_crop|copy("labels","ground_truth")|'
-      f'resize({arg.res})|resize({arg.res},key="labels",method="nearest")|'
-      f'bin_nyu_depth(min_depth={MIN_DEPTH}, max_depth={MAX_DEPTH}, num_bins={QUANTIZATION_BINS})|'
-      f'value_range(-1, 1)|copy("labels", "image")|'
-      f'keep("image", "ground_truth")'
+      f'decode|keep("cell_data")'
   )
 
   config.log_training_steps = 50
@@ -46,12 +36,10 @@ def get_config():
   config.keep_ckpt_steps = None
 
   # Model section
-  config.min_depth = MIN_DEPTH
-  config.max_depth = MAX_DEPTH
   config.model_name = 'proj.givt.vit'
   config.model = mlc.ConfigDict()
-  config.model.input_size = (arg.res, arg.res)
-  config.model.patch_size = (arg.patch_size, arg.patch_size)
+  config.model.input_size = (N_TIMESTAMPS, N_FEATURES)
+  config.model.patch_size = (1, 1)
   config.model.code_len = 256
   config.model.width = 768
   config.model.enc_depth = 6
@@ -65,11 +53,11 @@ def get_config():
   config.model.remat_policy = 'nothing_saveable'
   config.model_init = ''
 
-  config.rec_loss_fn = 'xent'  # xent, l2
+  config.rec_loss_fn = 'l2' 
   config.mask_zero_target = True
-  # values: (index in source image, number of classes)
+ 
   config.model.inout_specs = {
-      'depth': (0, QUANTIZATION_BINS),
+      'cell_data': (0, N_FEATURES),  
   }
 
   config.beta = 2e-4
@@ -99,16 +87,14 @@ def get_config():
   config.evals.val.log_steps = 250
 
   base = {
-      'type': 'proj.givt.nyu_depth',
+      'type': 'proj.givt.cell',
       'data': {**config.input.data},
       'pp_fn': pp_pred,
-      'pred': 'predict_depth',
+      'pred': 'predict_cell',
       'log_steps': 2000,
-      'min_depth': MIN_DEPTH,
-      'max_depth': MAX_DEPTH,
   }
-  config.evals.nyu_depth_val = {**base}
-  config.evals.nyu_depth_val.data.split = 'validation'
+  config.evals.cell_val = {**base}
+  config.evals.cell_val.data.split = 'validation'
 
   # ### Uses a lot of memory
   # config.evals.save_pred = dict(type='proj.givt.save_predictions')
@@ -133,6 +119,6 @@ def get_config():
     config.model.dec_depth = 1
     config.evals.val.data.split = 'validation[:16]'
     config.evals.val.log_steps = 20
-    config.evals.nyu_depth_val.data.split = 'validation[:16]'
+    config.evals.cell_val.data.split = 'validation[:16]'
 
   return config

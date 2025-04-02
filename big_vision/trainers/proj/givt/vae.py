@@ -73,8 +73,8 @@ P = jax.sharding.PartitionSpec
 def main(argv):
   del argv
 
-  jax.distributed.initialize()
-
+  jax.distributed.initialize(coordinator_address='localhost:8080', num_processes=1, process_id=0)
+  
   # Make sure TF does not touch GPUs.
   tf.config.set_visible_devices([], "GPU")
 
@@ -156,6 +156,8 @@ def main(argv):
 
   write_note("Initializing train dataset...")
   batch_size = config.input.batch_size
+
+  ## TODO: may need to remove this check for the cell dataset
   if batch_size % jax.device_count() != 0:
     raise ValueError(f"Batch size ({batch_size}) must "
                      f"be divisible by device number ({jax.device_count()})")
@@ -195,7 +197,7 @@ def main(argv):
     batch = jax.tree_map(
         lambda x: jnp.zeros(x.shape, x.dtype.as_numpy_dtype),
         train_ds.element_spec)
-    params = model.init(rng, batch["image"])["params"]
+    params = model.init(rng, batch["cell_data"])["params"]
 
     return params
 
@@ -206,7 +208,7 @@ def main(argv):
 
   write_note("Inferring parameter shapes...")
   rng, rng_init = jax.random.split(rng)
-  params_shape = jax.eval_shape(init, rng_init)
+  params_shape = jax.eval_shape(init, rng_init) 
 
   write_note("Inferring optimizer state shapes...")
   tx, sched_fns = bv_optax.make(config, nn.unbox(params_shape), sched_kw=dict(
@@ -316,14 +318,14 @@ def main(argv):
     def loss_fn(params):
       logits, out = model.apply(
           {"params": params},
-          batch["image"],
+          batch["cell_data"],
           train=True,
           rngs={"dropout": rng_model})
       mu = out["mu"]
       logvar = out["logvar"]
 
       loss, aux_loss = vae_loss_fn(
-          logits, batch["image"], mu, logvar, config.get("beta", 1.0),
+          logits, batch["cell_data"], mu, logvar, config.get("beta", 1.0),
       )
       return loss, aux_loss
 
@@ -409,10 +411,10 @@ def main(argv):
     local_rng = trainer_utils.get_local_rng(seed, batch)
     # Provide `dropout` rng for reprarametrization and set `train=True` to have
     # the model actually do reparametrization.
-    logits, out = model.apply({"params": train_state["params"]}, batch["image"],
+    logits, out = model.apply({"params": train_state["params"]}, batch["cell_data"],
                               rngs={"dropout": local_rng}, train=True)
     _, aux_loss = vae_loss_fn(
-        logits, batch["image"], out["mu"], out["logvar"],
+        logits, batch["cell_data"], out["mu"], out["logvar"],
         config.get("beta", 1.0),
         keep_batch_dim=True)
 
@@ -422,8 +424,8 @@ def main(argv):
 
   def predict_fn(train_state, batch, seed=0):
     if isinstance(batch, dict):
-      batch = batch["image"]
-    local_rng = trainer_utils.get_local_rng(seed, {"image": batch})
+      batch = batch["cell_data"]
+    local_rng = trainer_utils.get_local_rng(seed, {"cell_data": batch})
     # Provide `dropout` rng and set `train=True` to perform reparametrization
     logits, _ = model.apply({"params": train_state["params"]}, batch,
                             rngs={"dropout": local_rng}, train=True)
@@ -441,6 +443,10 @@ def main(argv):
         depth, min_depth=config.min_depth, max_depth=config.max_depth,
         num_bins=config.model.inout_specs["depth"][1])
     return {"depth": depth}
+  
+  def predict_fn_cell(train_state, batch):
+    logits = predict_fn({"params": train_state["params"]}, batch)["logits"]
+    return {"logits": logits}
 
   # Only initialize evaluators when they are first needed.
   @functools.lru_cache(maxsize=None)
@@ -450,6 +456,7 @@ def main(argv):
             "predict": predict_fn,
             "predict_panoptic": predict_fn_panoptic,
             "predict_depth": predict_fn_depth,
+            "predict_cell": predict_fn_cell,
             "validation": validation_fn},
         lambda s: write_note(f"Init evaluator: {s}…\n{u.chrono.note}"),
         lambda key, cfg: get_steps(key, default=None, cfg=cfg),
