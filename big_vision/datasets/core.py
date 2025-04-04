@@ -67,11 +67,14 @@ class DataSource:
     """
     raise RuntimeError("not implemented for {self.__class__.__name__}")
 
-
+## changed to include cell dataset
 def get(name, **kw):
   if name.startswith("bv:"):
     mod = importlib.import_module(f"big_vision.datasets.{name[3:]}")
     return mod.DataSource(**kw)
+  elif name.startswith("cell"):
+    mod = importlib.import_module("big_vision.datasets.cell.cell_dataset")
+    return mod.CellDataSource(**kw)
   else:
     mod = importlib.import_module("big_vision.datasets.tfds")
     return mod.DataSource(name, **kw)
