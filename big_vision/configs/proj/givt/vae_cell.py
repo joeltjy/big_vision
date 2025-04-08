@@ -6,7 +6,7 @@ import big_vision.configs.common as bvcc
 import ml_collections as mlc
 from big_vision.datasets.cell.cell_config import N_TIMESTAMPS, N_FEATURES
 
-def get_config():
+def get_config(arg=''):
   """Config for training VAE on cell dataset."""
   arg = bvcc.parse_arg(arg, runlocal=False, singlehost=False)
   config = mlc.ConfigDict()
@@ -22,13 +22,16 @@ def get_config():
 
   # TODO: add pp for cell dataset
   config.input.pp = (
-      f'decode|keep("cell_data")'
+      f'keep("image")|'
+      f'reshape(({N_TIMESTAMPS}, {N_FEATURES}, 1))'
   )
   pp_eval = (
-      f'decode|keep("cell_data")'
+      f'keep("image")|'
+      f'reshape(({N_TIMESTAMPS}, {N_FEATURES}, 1))'
   )
   pp_pred = (
-      f'decode|keep("cell_data")'
+      f'keep("image")|'
+      f'reshape(({N_TIMESTAMPS}, {N_FEATURES}, 1))'
   )
 
   config.log_training_steps = 50

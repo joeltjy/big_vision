@@ -197,7 +197,7 @@ def main(argv):
     batch = jax.tree_map(
         lambda x: jnp.zeros(x.shape, x.dtype.as_numpy_dtype),
         train_ds.element_spec)
-    params = model.init(rng, batch["cell_data"])["params"]
+    params = model.init(rng, batch["image"])["params"]
 
     return params
 
@@ -318,14 +318,14 @@ def main(argv):
     def loss_fn(params):
       logits, out = model.apply(
           {"params": params},
-          batch["cell_data"],
+          batch["image"],
           train=True,
           rngs={"dropout": rng_model})
       mu = out["mu"]
       logvar = out["logvar"]
 
       loss, aux_loss = vae_loss_fn(
-          logits, batch["cell_data"], mu, logvar, config.get("beta", 1.0),
+          logits, batch["image"], mu, logvar, config.get("beta", 1.0),
       )
       return loss, aux_loss
 
@@ -411,10 +411,10 @@ def main(argv):
     local_rng = trainer_utils.get_local_rng(seed, batch)
     # Provide `dropout` rng for reprarametrization and set `train=True` to have
     # the model actually do reparametrization.
-    logits, out = model.apply({"params": train_state["params"]}, batch["cell_data"],
+    logits, out = model.apply({"params": train_state["params"]}, batch["image"],
                               rngs={"dropout": local_rng}, train=True)
     _, aux_loss = vae_loss_fn(
-        logits, batch["cell_data"], out["mu"], out["logvar"],
+        logits, batch["image"], out["mu"], out["logvar"],
         config.get("beta", 1.0),
         keep_batch_dim=True)
 
@@ -424,8 +424,8 @@ def main(argv):
 
   def predict_fn(train_state, batch, seed=0):
     if isinstance(batch, dict):
-      batch = batch["cell_data"]
-    local_rng = trainer_utils.get_local_rng(seed, {"cell_data": batch})
+      batch = batch["image"]
+    local_rng = trainer_utils.get_local_rng(seed, {"image": batch})
     # Provide `dropout` rng and set `train=True` to perform reparametrization
     logits, _ = model.apply({"params": train_state["params"]}, batch,
                             rngs={"dropout": local_rng}, train=True)

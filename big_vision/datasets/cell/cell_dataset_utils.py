@@ -3,8 +3,7 @@ import anndata as ad
 import numpy as np
 import tensorflow as tf
 import os
-from cell_config import N_TIMESTAMPS, N_FEATURES
-import tqdm
+from big_vision.datasets.cell.cell_config import N_TIMESTAMPS, N_FEATURES
 
 def load_cell_datasets(data_dir):
     """
@@ -63,11 +62,11 @@ def cell_data_generator(dataset, lookup_dataset):
         dataset_data = np.array([lookup_dataset[id].toarray().flatten() for id in dataset_ids]) # (N_TIMESTAMPS, N_FEATURES)
         if idx == 0:
             print("dataset_data shape", dataset_data.shape)
-        yield {"cell_data": dataset_data}
+        yield {"image": dataset_data}
 
 def generate_output_signature():
     output_signature = {
-        "cell_data": tf.TensorSpec(shape=(N_TIMESTAMPS, N_FEATURES), dtype=tf.float32),
+        "image": tf.TensorSpec(shape=(N_TIMESTAMPS, N_FEATURES), dtype=tf.float32),
     }
     return output_signature
 

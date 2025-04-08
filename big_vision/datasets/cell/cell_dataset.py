@@ -6,17 +6,19 @@ import tensorflow as tf
 import overrides
 import tqdm
 
-from cell_config import N_TIMESTAMPS, N_FEATURES, DATA_DIR, LOOKUP_DIR
-import cell_dataset_utils as cdu
+from big_vision.datasets.cell.cell_config import N_TIMESTAMPS, N_FEATURES, DATA_DIR, LOOKUP_DIR
+import big_vision.datasets.cell.cell_dataset_utils as cdu
 
 class CellDataSource(ds_core.DataSource):
-    def __init__(self, split, data_dir=None, lookup_dir=None):
+    def __init__(self, split, data_dir=DATA_DIR, lookup_dir=LOOKUP_DIR):
 
         """
         Args:
             name: Name of the dataset.
             split: Split of the dataset.
             data_dir: Directory of the dataset.
+            lookup_dir: Directory of the lookup dataset.
+            In our use case, data_dir contains input_ids and lookup_dir maps the input_ids to the cell data.
         """
         if data_dir is None:
             raise ValueError("data_dir must be provided")
@@ -173,13 +175,13 @@ if __name__ == "__main__":
     # Take a look at some examples
     print("\nFirst 10 examples:")
     for example in dataset.take(20):
-        print("Example shape:", example["cell_data"][0][:20])
-        print("Example dtype:", example["cell_data"].dtype)
+        print("Example shape:", example["image"][0][:20])
+        print("Example dtype:", example["image"].dtype)
         print("---")
     
     # Look at batched examples
     print("\nBatched examples:")
     for batch in dataset.take(10).batch(10):
-        print("Batch shape:", batch["cell_data"].shape)
-        print("Batch dtype:", batch["cell_data"].dtype)
+        print("Batch shape:", batch["image"].shape)
+        print("Batch dtype:", batch["image"].dtype)
         print("---")
