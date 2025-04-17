@@ -102,8 +102,8 @@ class Model(vae.Model):
       num_out_channels = 3
 
     self.head = nn.Dense(
-        num_out_channels * np.prod(self.patch_size),
-        name="decoder_head", **kw)
+        1,
+        name="decoder_head")
 
   def encode(
       self,
@@ -143,7 +143,7 @@ class Model(vae.Model):
       train: bool = False,
   ) -> jax.Array | Mapping[str, jax.Array]:
     x = self.decoder_stem(x)
-
+    print("intermediate x shape 1", x.shape)
     if self.bottleneck_resize:
       l = int(np.round(self.code_len ** 0.5))
       x = einops.rearrange(x, "b (h w) c -> b h w c", h=l, w=l)
@@ -151,16 +151,23 @@ class Model(vae.Model):
           x, (x.shape[0], self.grid_size[0], self.grid_size[1], x.shape[3]),
           method="linear")
       x = einops.rearrange(x, "b h w c -> b (h w) c")
+      print("intermediate x shape 2", x.shape)
     else:
       x = jnp.einsum("bnc,nt->btc", x, self.bottleneck_upsample)
+      print("intermediate x shape 3", x.shape)
 
     x, _ = self.decoder(x + self.pos_embedding_decoder, deterministic=not train)
+    print("intermediate x shape 4", x.shape)
     x = self.head(x)
+    print("intermediate x shape 5", x.shape)
     # c = 3 for RGB images
+    
     x = einops.rearrange(x, "b (h w) (p q c) -> b (h p) (w q) c",
                          h=self.grid_size[0], w=self.grid_size[1],
                          p=self.patch_size[0], q=self.patch_size[1])
 
+    print("intermediate x shape 6", x.shape)
+    
     if self.inout_specs is None:
       x = jnp.clip(x, -1.0, 1.0)
     else:

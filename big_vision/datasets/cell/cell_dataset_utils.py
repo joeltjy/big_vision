@@ -59,14 +59,15 @@ def cell_data_generator(dataset, lookup_dataset):
         dataset_ids = dataset[idx]["input_ids"] 
         assert len(dataset_ids) == N_TIMESTAMPS
         # Convert sparse matrices to dense arrays
-        dataset_data = np.array([lookup_dataset[id].toarray().flatten() for id in dataset_ids]) # (N_TIMESTAMPS, N_FEATURES)
+        dataset_data = np.array([lookup_dataset[id].toarray().flatten() for id in dataset_ids]).reshape(N_TIMESTAMPS, N_FEATURES, 1) # (N_TIMESTAMPS, N_FEATURES, 1)
         if idx == 0:
             print("dataset_data shape", dataset_data.shape)
-        yield {"image": dataset_data}
+        for i in range(N_TIMESTAMPS):
+            yield {"image": dataset_data[i:i+1]}
 
 def generate_output_signature():
     output_signature = {
-        "image": tf.TensorSpec(shape=(N_TIMESTAMPS, N_FEATURES), dtype=tf.float32),
+        "image": tf.TensorSpec(shape=(1, N_FEATURES, 1), dtype=tf.float32),
     }
     return output_signature
 

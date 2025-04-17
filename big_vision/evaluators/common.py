@@ -59,6 +59,7 @@ def from_config(config, predict_fns,
     # TODO: eventually remove all the deprecated names...
     cfg["batch_size"] = cfg.get("batch_size") or config.get("batch_size_eval") or config.get("input.batch_size") or config.get("batch_size")  # pylint: disable=line-too-long
 
+    print(f"TEST Importing module: {module}")
     module = importlib.import_module(f"big_vision.evaluators.{module}")
 
     if devices is not None:
@@ -83,6 +84,7 @@ def from_config(config, predict_fns,
     if pred_kw is not None:
       predict_fn = _CacheablePartial(predict_fn, flax.core.freeze(pred_kw))
     evaluator = module.Evaluator(predict_fn, **cfg)
+    print(f"TEST Evaluator: {evaluator}")
     evaluators.append((name, evaluator, logsteps, prefix))
 
   return evaluators

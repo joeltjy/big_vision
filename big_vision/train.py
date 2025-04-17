@@ -24,6 +24,9 @@ import importlib
 import multiprocessing.pool
 import os
 
+import sys
+sys.path.append('../..') 
+
 from absl import app
 from absl import flags
 from absl import logging

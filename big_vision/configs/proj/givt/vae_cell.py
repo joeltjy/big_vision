@@ -5,6 +5,7 @@ Uses ViT as encoder and transformer as decoder.
 import big_vision.configs.common as bvcc
 import ml_collections as mlc
 from big_vision.datasets.cell.cell_config import N_TIMESTAMPS, N_FEATURES
+import torch.nn as nn
 
 def get_config(arg=''):
   """Config for training VAE on cell dataset."""
@@ -15,23 +16,20 @@ def get_config(arg=''):
 
   config.input.data = dict(name='cell', split='train')
 
-  config.input.batch_size = 16
+  config.input.batch_size = 1
   config.input.shuffle_buffer_size = 1000
 
   config.total_epochs = 200
 
   # TODO: add pp for cell dataset
   config.input.pp = (
-      f'keep("image")|'
-      f'reshape(({N_TIMESTAMPS}, {N_FEATURES}, 1))'
+      f'keep("image")'
   )
   pp_eval = (
-      f'keep("image")|'
-      f'reshape(({N_TIMESTAMPS}, {N_FEATURES}, 1))'
+      f'keep("image")'
   )
   pp_pred = (
-      f'keep("image")|'
-      f'reshape(({N_TIMESTAMPS}, {N_FEATURES}, 1))'
+      f'keep("image")'
   )
 
   config.log_training_steps = 50
@@ -41,10 +39,11 @@ def get_config(arg=''):
   # Model section
   config.model_name = 'proj.givt.vit'
   config.model = mlc.ConfigDict()
-  config.model.input_size = (N_TIMESTAMPS, N_FEATURES)
-  config.model.patch_size = (1, 1)
+  config.model.input_size = (1, N_FEATURES)  # Process one row
+  config.model.patch_size = (1, 1)  # Process each element
   config.model.code_len = 256
   config.model.width = 768
+  config.model.bottleneck_resize = False
   config.model.enc_depth = 6
   config.model.dec_depth = 12
   config.model.mlp_dim = 3072
@@ -60,7 +59,7 @@ def get_config(arg=''):
   config.mask_zero_target = True
  
   config.model.inout_specs = {
-      'cell_data': (0, N_FEATURES),  
+      'image': (0, N_FEATURES),  # Process each row independently
   }
 
   config.beta = 2e-4
@@ -115,7 +114,7 @@ def get_config(arg=''):
     config.input.batch_size = 128
     config.num_epochs = 50
   elif arg.runlocal:
-    config.input.batch_size = 16
+    config.input.batch_size = 1
     config.input.shuffle_buffer_size = 10
     config.log_training_steps = 5
     config.model.enc_depth = 1

@@ -36,7 +36,7 @@ class CellDataSource(ds_core.DataSource):
 
         if split == "train":
             self.dataset = train_dataset
-        elif split == "eval":
+        elif split == "validation" or split == "eval":
             self.dataset = eval_dataset
         else:
             raise ValueError(f"Invalid split: {split}")
@@ -48,7 +48,7 @@ class CellDataSource(ds_core.DataSource):
 
         print(f"Loading generator function")
         self.generator_fn = cdu.cell_data_generator
-
+ 
         print(f"Generating output signature")
         self.output_signature = cdu.generate_output_signature()
 
@@ -79,7 +79,6 @@ class CellDataSource(ds_core.DataSource):
     def dataset(self, value):
         self._dataset = value
     
-    @property
     def num_examples_per_process(self):
         """List of number of examples per process."""
         return self._examples_per_process

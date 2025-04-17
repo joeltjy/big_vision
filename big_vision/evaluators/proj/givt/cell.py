@@ -37,6 +37,7 @@ def _get_predict_fn(predict_fn, mesh=None):
     def _run_predict_fn(train_state, batch):
         """Run predict_fn and gather all outputs on all devices."""
         pred = predict_fn(train_state, batch)
+        print(f"TEST Pred: {pred}")
         return {
             "gt": batch["image"],
             "y": pred["logits"]["image"]
@@ -98,7 +99,6 @@ class Evaluator:
                 continue
 
             out = jax.device_get(out)
-            out = jax.tree_map(lambda x: x[out["mask"]], out)
 
             for gt, pred in zip(out["gt"], out["y"]):
                 gt, pred = utils.put_cpu((gt, pred))
